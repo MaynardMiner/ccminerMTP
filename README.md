@@ -1,3 +1,7 @@
+This is a fork/test build for linux. The original release can be found here:
+
+https://github.com/nemosminer/ccminerMTP
+
 ccminer with mtp support
 ========================
 djm34 2017-2018
