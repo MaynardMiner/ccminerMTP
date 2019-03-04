@@ -631,9 +631,9 @@ struct stratum_job {
 	unsigned char *xnonce2;
 	int merkle_count;
 	unsigned char **merkle;
-	unsigned char version[4];
-	unsigned char nbits[4];
-	unsigned char ntime[4];
+	unsigned char version[8];
+	unsigned char nbits[8];
+	unsigned char ntime[8];
 	unsigned char claim[32]; // lbry
 	bool clean;
 	bool IncXtra;
@@ -657,6 +657,7 @@ struct stratum_ctx {
 	char curl_err_str[CURL_ERROR_SIZE];
 	curl_socket_t sock;
 	size_t sockbuf_size;
+	size_t sockbuf_bossize; // redundant
 	char *sockbuf;
 
 	double next_diff;
@@ -821,7 +822,8 @@ json_t* stratum_recv_line_c2(struct stratum_ctx *sctx);
 json_t *stratum_recv_line_bos(struct stratum_ctx *sctx);
 bool stratum_recv_line_compact(struct stratum_ctx *sctx);
 
-
+void stratum_bos_fillbuffer(struct stratum_ctx *sctx);
+json_t* recode_message(json_t *MyObject2);
 void hashlog_remember_submit(struct work* work, uint32_t nonce);
 void hashlog_remember_scan_range(struct work* work);
 uint32_t hashlog_already_submittted(char* jobid, uint32_t nounce);

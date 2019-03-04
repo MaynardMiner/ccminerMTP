@@ -28,22 +28,23 @@ static __thread uint32_t throughput = 0;
 static uint32_t JobId[MAX_GPUS] = {0};
 static uint64_t XtraNonce2[MAX_GPUS] = {0};
 static bool fillGpu[MAX_GPUS] = {false};
-static  MerkleTree::Elements TheElements;
-static  MerkleTree ordered_tree[MAX_GPUS];
+//static  MerkleTree::Elements TheElements;
+static  MerkleTree *ordered_tree[MAX_GPUS];
 static  unsigned char TheMerkleRoot[MAX_GPUS][16];
 static  argon2_context context[MAX_GPUS];
 static argon2_instance_t instance[MAX_GPUS];
+static uint8_t *dx[MAX_GPUS];
+static uint256 TheUint256Target[MAX_GPUS];
 //static pthread_mutex_t work_lock = PTHREAD_MUTEX_INITIALIZER;
 //static pthread_barrier_t barrier;
 //static pthread_rwlock_t rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
-static std::vector<uint8_t*> MEM[MAX_GPUS];
+//static std::vector<uint8_t*> MEM[MAX_GPUS];
 
 extern "C" int scanhash_mtp(int nthreads,int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done, struct mtp* mtp, struct stratum_ctx *sctx)
 {
 
 	unsigned char mtpHashValue[32];
-
 
 //if (JobId==0)
 //	pthread_barrier_init(&barrier, NULL, nthreads);
@@ -68,16 +69,16 @@ extern "C" int scanhash_mtp(int nthreads,int thr_id, struct work* work, uint32_t
 		cudaSetDeviceFlags(cudaDeviceScheduleBlockingSync);
 //		cudaSetDeviceFlags(cudaDeviceScheduleYield);
 //		cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
-		int intensity = 21.5;
+		int intensity = 21;
 		throughput = cuda_default_throughput(thr_id, 1U << intensity); // 18=256*256*4;
 //		throughput =  1024*64;
 		if (init[thr_id]) throughput = min(throughput, max_nonce - first_nonce);
 
 		cudaDeviceProp props;
 		cudaGetDeviceProperties(&props, dev_id);
-
-
-		gpulog(LOG_INFO, thr_id, "Intensity set to %g, %u cuda threads", throughput2intensity(throughput), throughput);
+	
+//		cudaMallocHost(&dx[thr_id], sizeof(uint2) * 2 * 1048576 * 4);
+		gpulog(LOG_INFO, thr_id, "%s Intensity: %g ", device_name[dev_id], throughput2intensity(throughput));
 
 
 		mtp_cpu_init(thr_id, throughput);
@@ -86,7 +87,10 @@ extern "C" int scanhash_mtp(int nthreads,int thr_id, struct work* work, uint32_t
 
 
 	}
-
+//sleep(10);
+//cudaFreeHost(dx[thr_id]);
+//printf("freed\n");
+//sleep(60);
 	uint32_t _ALIGN(128) endiandata[20];
 	((uint32_t*)pdata)[19] = (pdata[20]); //*/0x00100000; // mtp version not the actual nonce
 //	((uint32_t*)pdata)[19] = 0x1000;
@@ -149,63 +153,48 @@ pthread_mutex_unlock(&work_lock);
 */
 
 if (JobId[thr_id] != work->data[17] || XtraNonce2[thr_id] != ((uint64_t*)work->xnonce2)[0]) {
-//	printf("thr_id %d xnonce2 %llx\n",thr_id, ((uint64_t*)work->xnonce2)[0]);
-//	gpulog(LOG_WARNING, thr_id, "filling memory");
-	//restart_threads();
-	//pthread_barrier_wait(&barrier);
-	if (JobId[thr_id] != 0)
-		free_memory(&context[thr_id], (unsigned char *)instance[thr_id].memory, instance[thr_id].memory_blocks, sizeof(block));
 
-	//printf("coming here2\n");
+	if (JobId[thr_id] != 0) {
+
+		free_memory(&context[thr_id], (unsigned char *)instance[thr_id].memory, instance[thr_id].memory_blocks, sizeof(block));
+		ordered_tree[thr_id]->Destructor();
+		cudaFreeHost(dx[device_map[thr_id]]);
+
+		delete  ordered_tree[thr_id];
+
+	}
+	cudaMallocHost(&dx[device_map[thr_id]], sizeof(uint2) * 2 * 1048576 * 4);
 	context[thr_id] = init_argon2d_param((const char*)endiandata);
+
 	argon2_ctx_from_mtp(&context[thr_id], &instance[thr_id]);
-//sleep(50);
-	for (int i = 0; i<MEM[thr_id].size(); i++)
-		free(MEM[thr_id][i]);
-	//printf("filling memory\n");
-	//gpulog(LOG_WARNING, thr_id, "filled first blocks on cpu\n");
-/*
 	mtp_fill_1b(thr_id, instance[thr_id].memory[0 + 0].v, 0 + 0);
 	mtp_fill_1b(thr_id, instance[thr_id].memory[0 + 1].v, 0 + 1);
-
 	mtp_fill_1b(thr_id, instance[thr_id].memory[2 + 0].v, 1048576 + 0);
 	mtp_fill_1b(thr_id, instance[thr_id].memory[2 + 1].v, 1048576 + 1);
 	mtp_fill_1b(thr_id, instance[thr_id].memory[4 + 0].v, 2097152 + 0);
 	mtp_fill_1b(thr_id, instance[thr_id].memory[4 + 1].v, 2097152 + 1);
 	mtp_fill_1b(thr_id, instance[thr_id].memory[6 + 0].v, 3145728 + 0);
 	mtp_fill_1b(thr_id, instance[thr_id].memory[6 + 1].v, 3145728 + 1);
-*/
-//	uint8_t *x = (uint8_t*)malloc(MERKLE_TREE_ELEMENT_SIZE_B*instance->memory_blocks);
 	mtp_i_cpu(thr_id, instance[thr_id].block_header);
-//	printf("after argon3\n");
-	//	MerkleTree::Elements TheElements = mtp_init2(&instance[thr_id], thr_id);
-	printf("Step 1 : Compute F(I) and store its T blocks X[1], X[2], ..., X[T] in the memory \n");
-	uint8_t *x = (uint8_t*)malloc(MERKLE_TREE_ELEMENT_SIZE_B*instance->memory_blocks);
-	get_tree(thr_id,x);
-	printf("Step 2 : Compute the root Φ of the Merkle hash tree \n");
 
-//	uint8_t * x = mtp_init3(&instance[thr_id], thr_id);
-//	printf("after argon4\n");
-	//	ordered_tree[thr_id] = MerkleTree(TheElements, true);
-	ordered_tree[thr_id] = MerkleTree(x, true);
-	//	gpulog(LOG_WARNING, thr_id, "filled blocks on GPU\n");
+//	printf("Step 1 : Compute F(I) and store its T blocks X[1], X[2], ..., X[T] in the memory \n");
 
-	//for(;;);
+	get_tree(thr_id,dx[device_map[thr_id]]);
+//	printf("Step 2 : Compute the root Φ of the Merkle hash tree \n");
+//sleep(10);
+	ordered_tree[thr_id] = new MerkleTree(dx[device_map[thr_id]], true);
+ 
 	JobId[thr_id] = work->data[17];
 	XtraNonce2[thr_id] = ((uint64_t*)work->xnonce2)[0];
-	MerkleTree::Buffer root = ordered_tree[thr_id].getRoot();
-	//for(;;);
+	MerkleTree::Buffer root = ordered_tree[thr_id]->getRoot();
+
 	std::copy(root.begin(), root.end(), TheMerkleRoot[thr_id]);
-	MEM[thr_id] = ordered_tree[thr_id].getMem();
-//	printf("after argon4\n");
-	//	mtp_setBlockTarget(0,endiandata,ptarget,&TheMerkleRoot);
+
 	mtp_setBlockTarget(thr_id, endiandata, ptarget, &TheMerkleRoot[thr_id]);
-//	free(x);
-//	gpulog(LOG_WARNING, thr_id, "memory filled %d chunks", MEM[thr_id].size());
+	root.resize(0);
+	
+	TheUint256Target[thr_id] = ((uint256*)ptarget)[0];
 }
-
-
-
 
 /*
 if (fillGpu[thr_id]) {
@@ -240,14 +229,15 @@ fillGpu[thr_id]=false;
 		if (foundNonce != UINT32_MAX)
 		{
 
-			block_mtpProof TheBlocksAndProofs[140];
+                        /*
 			uint256 TheUint256Target[1];
 			TheUint256Target[0] = ((uint256*)ptarget)[0];
+                        */
+			
+			blockS nBlockMTP[MTP_L *2] = {0};
+			unsigned char nProofMTP[MTP_L * 3 * 353 ] = {0};
 
-			blockS nBlockMTP[MTP_L *2];
-			unsigned char nProofMTP[MTP_L * 3 * 353 ];
-
-			uint32_t is_sol = mtp_solver(thr_id,foundNonce, &instance[thr_id], nBlockMTP,nProofMTP, TheMerkleRoot[thr_id], mtpHashValue, ordered_tree[thr_id], endiandata,TheUint256Target[0]);
+			uint32_t is_sol = mtp_solver(thr_id,foundNonce, &instance[thr_id], nBlockMTP,nProofMTP, TheMerkleRoot[thr_id], mtpHashValue, *ordered_tree[thr_id], endiandata,TheUint256Target[thr_id]);
 
 			if (is_sol==1 /*&& fulltest(vhash64, ptarget)*/) {
 				int res = 1;
@@ -269,10 +259,11 @@ fillGpu[thr_id]=false;
 				int len = 0;
 
 				memcpy(mtp->nProofMTP, nProofMTP, sizeof(unsigned char)* MTP_L * 3 * 353);
-				
+
 				return res;
 
 			} else {
+
 				gpulog(LOG_WARNING, thr_id, "result for %08x does not validate on CPU!", foundNonce);
 
 			}
@@ -296,7 +287,6 @@ fillGpu[thr_id]=false;
 TheEnd:
 //		sctx->job.IncXtra = true;
 		*hashes_done = pdata[19] - first_nonce;
-	
 
 	return 0;
 }

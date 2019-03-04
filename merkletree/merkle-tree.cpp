@@ -20,7 +20,10 @@ MerkleTree::MerkleTree(uint8_t * elements, bool preserveOrder)
     : preserveOrder_(preserveOrder)//, elements_(elements)
 {
 //   mem[0]=(elements);
+//	uint8_t* Truc(elements);
+	
 	mem.push_back(elements);
+
 /*
 printf("Init layer addr %lx\n",elements);
 	elements_.clear();
@@ -64,8 +67,8 @@ printf("Init layer addr %lx\n",elements);
     }
 */
     getLayers();
-uint64_t *mr=(uint64_t*)mem.back();
-	printf("root %lx %lx\n",mr[0],mr[1]);
+//uint64_t *mr=(uint64_t*)mem.back();
+//	printf("root %lx %lx\n",mr[0],mr[1]);
 //for(;;);
 }
 
@@ -75,13 +78,18 @@ MerkleTree::MerkleTree()
 MerkleTree::~MerkleTree()
 {
 
-//        printf("destroying tree %d\n",mem.size());
-//	for(int i=0;i<mem.size();i++){
-//		free(mem[i]);
-//	}
+
 
 }
+void MerkleTree::Destructor()
+{
+	for(int i=1;i<mem.size();i++) { // element 0 is.... aaahh !!!
+		free(mem[i]);
+		};
+//	mem.clear();
+//	mem.shrink_to_fit();
 
+}
 
 MerkleTree::Buffer MerkleTree::hash(const Buffer& data)
 {
@@ -278,15 +286,18 @@ void MerkleTree::getLayers()
 void MerkleTree::getNextLayer()
 {
 
-uint8_t *prev_mem=mem.back();
+uint8_t *prev_mem= mem.back();
 
 int size=1024*1024*4*16;
 for(int i=0;i<mem.size();i++)
 	size/=2;
 //printf("size %d %d %d\n",size, mem.size(), 1024*1024*4*16);
 uint8_t *new_mem=(uint8_t *)malloc(size);
-mem.push_back(new_mem);
+
 gen_layer(prev_mem, new_mem, size/16);
+mem.push_back(new_mem);
+
+
 //for(;;);
 /*
     const Elements& previous_layer = layers_.back();

@@ -56,6 +56,7 @@ public :
      */
     MerkleTree(uint8_t* elements, bool preserveOrder = true);
 	MerkleTree();
+	void Destructor();
     /** Destructor */
     virtual ~MerkleTree();
 
@@ -85,12 +86,12 @@ public :
 	return ret;
 //        return layers_.back()[0];
     }
-
+/*
     std::vector<uint8_t*> getMem() const
 	{
 	return mem;
 	}
-
+*/
     /** Compute a root hash given a set of hashes
      *
      * This function builds a temporary Merkle Tree and extracts its root
@@ -220,6 +221,7 @@ private :
      * which is the top-level hash, aka the root. The last layer has a length
      * of one.
      */
+
     typedef std::deque<Elements> Layers;
 
     bool     preserveOrder_; /**< Whether to preserve the initial order */

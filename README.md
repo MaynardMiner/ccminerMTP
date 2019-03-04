@@ -33,19 +33,13 @@ A developpement environnement is required together with curl, jansson and openss
 	* sudo apt-get update && sudo apt-get -y dist-upgrade
 	* sudo apt-get -y install gcc g++ build-essential automake linux-headers-$(uname -r) git gawk libcurl4-openssl-dev libjansson-dev xorg libc++-dev libgmp-dev python-dev
 
-	* Installing CUDA 10 and compatible drivers from nvidia website and not from ubuntu package is usually easier
+	* Installing CUDA 9.2 and compatible drivers from nvidia website and not from ubuntu package is usually easier
 	
 	* Compiling ccminner:
 
-	You can run the prebuilt make script to make a native build:
-
-	./build.sh
-
-	To build step by step:
-
 	./autogen.sh
 	./configure
-	make
+	./make
 
 
 About source code dependencies for windows

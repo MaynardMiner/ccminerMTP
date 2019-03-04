@@ -19,7 +19,8 @@
 static const unsigned int d_mtp = 1;
 static const uint8_t L = 64;
 static const unsigned int memory_cost = memcost;
-extern uint8_t* get_tree(int thr_id,uint8_t *d);
+extern void get_tree(int thr_id,uint8_t *d);
+extern uint8_t* get_tree2(int thr_id);
 extern void get_block(int thr_id, void* d, uint32_t index);
 
 uint32_t index_beta(const argon2_instance_t *instance,
@@ -396,8 +397,9 @@ void clear_internal_memory(void *v, size_t n) {
 
 void free_memory(const argon2_context *context, uint8_t *memory,
 	size_t num, size_t size) {
-	size_t memory_size = num*size;
-//	clear_internal_memory(memory, memory_size);
+//	size_t memory_size = num*size;
+	size_t memory_size = 128 * 8 * 2 * 4 * 2;
+	clear_internal_memory(memory, memory_size);
 	if (context->free_cbk) {
 		(context->free_cbk)(memory, memory_size);
 	}
@@ -668,10 +670,6 @@ int mtp_solver(int thr_id, uint32_t TheNonce, argon2_instance_t *instance,
 		ablake2b_state BlakeHash;
 		ablake2b_init(&BlakeHash, 32);
 
-		uint32_t Test[4];
-
-		for (int i = 0; i<4; i++)
-			Test[i] = ((uint32_t*)resultMerkleRoot)[i];
 
 
 
@@ -703,14 +701,14 @@ int mtp_solver(int thr_id, uint32_t TheNonce, argon2_instance_t *instance,
 			getblockindex(thr_id, ij, instance, &prev_index, &ref_index);
 
 			//			copy_blockS(&nBlockMTP[j * 2 - 2], &instance->memory[prev_index]);
-			get_block(thr_id, &nBlockMTP[j * 2 - 2], prev_index);
+			get_block(thr_id, (uint8_t*)nBlockMTP[j * 2 - 2].v, prev_index);
 			//ref block
 			//			copy_blockS(&nBlockMTP[j * 2 - 1], &instance->memory[ref_index]);
-			get_block(thr_id, &nBlockMTP[j * 2 - 1], ref_index);
+			get_block(thr_id, (uint8_t*)nBlockMTP[j * 2 - 1].v, ref_index);
 			block blockhash;
 			uint8_t blockhash_bytes[ARGON2_BLOCK_SIZE];
 			//			copy_block(&blockhash, &instance->memory[ij]);
-			get_block(thr_id, &blockhash, ij);
+			get_block(thr_id, (uint8_t*)&blockhash.v, ij);
 
 
 			store_block(&blockhash_bytes, &blockhash);
@@ -722,12 +720,14 @@ int mtp_solver(int thr_id, uint32_t TheNonce, argon2_instance_t *instance,
 			ablake2b_final(&BlakeHash2, (unsigned char*)&Y[j], 32);
 			////////////////////////////////////////////////////////////////
 			// current block
+			clear_internal_memory(blockhash.v, ARGON2_BLOCK_SIZE);
+			clear_internal_memory(blockhash_bytes, ARGON2_BLOCK_SIZE);
 
 			unsigned char curr[32] = { 0 };
 			block blockhash_curr;
 			uint8_t blockhash_curr_bytes[ARGON2_BLOCK_SIZE];
 			//			copy_block(&blockhash_curr, &instance->memory[ij]);
-			get_block(thr_id, &blockhash_curr, ij);
+			get_block(thr_id, (uint8_t*)&blockhash_curr.v, ij);
 			store_block(&blockhash_curr_bytes, &blockhash_curr);
 			ablake2b_state state_curr;
 			ablake2b_init(&state_curr, MERKLE_TREE_ELEMENT_SIZE_B);
@@ -754,7 +754,7 @@ int mtp_solver(int thr_id, uint32_t TheNonce, argon2_instance_t *instance,
 			block blockhash_prev;
 			uint8_t blockhash_prev_bytes[ARGON2_BLOCK_SIZE];
 			//			copy_block(&blockhash_prev, &instance->memory[prev_index]);
-			get_block(thr_id, &blockhash_prev, prev_index);
+			get_block(thr_id, (uint8_t*)&blockhash_prev.v, prev_index);
 			store_block(&blockhash_prev_bytes, &blockhash_prev);
 			ablake2b_state state_prev;
 			ablake2b_init(&state_prev, MERKLE_TREE_ELEMENT_SIZE_B);
@@ -785,7 +785,7 @@ int mtp_solver(int thr_id, uint32_t TheNonce, argon2_instance_t *instance,
 			block blockhash_ref;
 			uint8_t blockhash_ref_bytes[ARGON2_BLOCK_SIZE];
 			//			copy_block(&blockhash_ref, &instance->memory[ref_index]);
-			get_block(thr_id, &blockhash_ref, ref_index);
+			get_block(thr_id, (uint8_t*)&blockhash_ref.v, ref_index);
 			store_block(&blockhash_ref_bytes, &blockhash_ref);
 			ablake2b_state state_ref;
 			ablake2b_init(&state_ref, MERKLE_TREE_ELEMENT_SIZE_B);
@@ -827,11 +827,11 @@ int mtp_solver(int thr_id, uint32_t TheNonce, argon2_instance_t *instance,
 				mtpHashValue[i] = (((unsigned char*)(&Y[L]))[i]);
 
 			// Found a solution
-			printf("Found a solution. Nonce=%08x Hash:", TheNonce);
-			for (int n = 0; n < 32; n++) {
-				printf("%02x", ((unsigned char*)&Y[0])[n]);
-			}
-			printf("\n");
+//			printf("Found a solution. Nonce=%08x Hash:", TheNonce);
+//			for (int n = 0; n < 32; n++) {
+//				printf("%02x", ((unsigned char*)&Y[0])[n]);
+//			}
+//			printf("\n");
 			return 1;
 
 
@@ -912,13 +912,15 @@ MerkleTree::Elements   mtp_init2(argon2_instance_t *instance) {
 
 }
 
-uint8_t *mtp_init3(argon2_instance_t *instance, int thr_id) {
-	printf("Step 1 : Compute F(I) and store its T blocks X[1], X[2], ..., X[T] in the memory \n");
-	uint8_t *mem = (uint8_t*)malloc(MERKLE_TREE_ELEMENT_SIZE_B*instance->memory_blocks);
-//	mem = get_tree(thr_id);
-	printf("Step 2 : Compute the root Φ of the Merkle hash tree \n");
+void  mtp_init3(argon2_instance_t *instance, int thr_id, MerkleTree &ThatTree) {
 
-	return mem;
+	printf("Step 1 : Compute F(I) and store its T blocks X[1], X[2], ..., X[T] in the memory \n");
+//	uint8_t *mem = (uint8_t*)malloc(MERKLE_TREE_ELEMENT_SIZE_B*instance->memory_blocks);
+//	get_tree(thr_id);
+	printf("Step 2 : Compute the root Φ of the Merkle hash tree \n");
+	ThatTree = MerkleTree(get_tree2(thr_id),true);
+//	ThatTree = TheTree;
+//	free(mem);
 }
 
 //
